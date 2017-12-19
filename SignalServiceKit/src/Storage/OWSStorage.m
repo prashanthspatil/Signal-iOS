@@ -26,7 +26,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 
 @protocol OWSDatabaseConnectionDelegate <NSObject>
 
-- (BOOL)isDatabaseInitialized;
+- (BOOL)areSyncRegistrationsAreComplete;
 
 @end
 
@@ -79,7 +79,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.isDatabaseInitialized);
+    OWSAssert(delegate.areSyncRegistrationsAreComplete);
 
     [super readWriteWithBlock:block];
 }
@@ -88,7 +88,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.isDatabaseInitialized);
+    OWSAssert(delegate.areSyncRegistrationsAreComplete);
 
     [super asyncReadWriteWithBlock:block];
 }
@@ -98,7 +98,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.isDatabaseInitialized);
+    OWSAssert(delegate.areSyncRegistrationsAreComplete);
 
     [super asyncReadWriteWithBlock:block completionBlock:completionBlock];
 }
@@ -109,7 +109,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.isDatabaseInitialized);
+    OWSAssert(delegate.areSyncRegistrationsAreComplete);
 
     [super asyncReadWriteWithBlock:block completionQueue:completionQueue completionBlock:completionBlock];
 }
@@ -231,7 +231,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 @interface OWSStorage () <OWSDatabaseConnectionDelegate>
 
 @property (atomic, nullable) YapDatabase *database;
-@property (atomic) BOOL isDatabaseInitialized;
+@property (atomic) BOOL areSyncRegistrationsAreComplete;
 
 @end
 
@@ -269,11 +269,11 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
     return self;
 }
 
-- (void)setDatabaseInitialized
+- (void)setSyncRegistrationsAreComplete
 {
-    OWSAssert(!self.isDatabaseInitialized);
+    OWSAssert(!self.areSyncRegistrationsAreComplete);
 
-    self.isDatabaseInitialized = YES;
+    self.areSyncRegistrationsAreComplete = YES;
 }
 
 - (BOOL)tryToLoadDatabase
