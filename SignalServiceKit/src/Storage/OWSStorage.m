@@ -5,6 +5,7 @@
 #import "OWSStorage.h"
 #import "AppContext.h"
 #import "NSData+Base64.h"
+#import "NSNotificationCenter+OWS.h"
 #import "TSAttachmentStream.h"
 #import "TSStorageManager.h"
 #import <Curve25519Kit/Randomness.h>
@@ -12,6 +13,8 @@
 #import <YapDatabase/YapDatabase.h>
 
 NS_ASSUME_NONNULL_BEGIN
+
+NSString *const StorageIsReadyNotification = @"StorageIsReadyNotification";
 
 NSString *const OWSStorageExceptionName_DatabasePasswordInaccessibleWhileBackgrounded
     = @"OWSStorageExceptionName_DatabasePasswordInaccessibleWhileBackgrounded";
@@ -26,7 +29,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 
 @protocol OWSDatabaseConnectionDelegate <NSObject>
 
-- (BOOL)areSyncRegistrationsAreComplete;
+- (BOOL)areSyncRegistrationsComplete;
 
 @end
 
@@ -79,7 +82,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.areSyncRegistrationsAreComplete);
+    OWSAssert(delegate.areSyncRegistrationsComplete);
 
     [super readWriteWithBlock:block];
 }
@@ -88,7 +91,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.areSyncRegistrationsAreComplete);
+    OWSAssert(delegate.areSyncRegistrationsComplete);
 
     [super asyncReadWriteWithBlock:block];
 }
@@ -98,7 +101,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.areSyncRegistrationsAreComplete);
+    OWSAssert(delegate.areSyncRegistrationsComplete);
 
     [super asyncReadWriteWithBlock:block completionBlock:completionBlock];
 }
@@ -109,7 +112,7 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 {
     id<OWSDatabaseConnectionDelegate> delegate = self.delegate;
     OWSAssert(delegate);
-    OWSAssert(delegate.areSyncRegistrationsAreComplete);
+    OWSAssert(delegate.areSyncRegistrationsComplete);
 
     [super asyncReadWriteWithBlock:block completionQueue:completionQueue completionBlock:completionBlock];
 }
@@ -231,7 +234,6 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 @interface OWSStorage () <OWSDatabaseConnectionDelegate>
 
 @property (atomic, nullable) YapDatabase *database;
-@property (atomic) BOOL areSyncRegistrationsAreComplete;
 
 @end
 
@@ -269,11 +271,82 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
     return self;
 }
 
-- (void)setSyncRegistrationsAreComplete
+- (BOOL)areAsyncRegistrationsComplete
 {
-    OWSAssert(!self.areSyncRegistrationsAreComplete);
+    OWS_ABSTRACT_METHOD();
 
-    self.areSyncRegistrationsAreComplete = YES;
+    return NO;
+}
+
+- (BOOL)areSyncRegistrationsComplete
+{
+    OWS_ABSTRACT_METHOD();
+
+    return NO;
+}
+
+- (void)runSyncRegistrations
+{
+    OWS_ABSTRACT_METHOD();
+}
+
+- (void)runAsyncRegistrationsWithCompletion:(void (^_Nonnull)(void))completion
+{
+    OWS_ABSTRACT_METHOD();
+}
+
++ (NSArray<OWSStorage *> *)allStorages
+{
+    return @[
+        TSStorageManager.sharedManager,
+    ];
+}
+
++ (void)setupWithSafeBlockingMigrations:(void (^_Nonnull)(void))safeBlockingMigrationsBlock
+{
+    OWSAssert(safeBlockingMigrationsBlock);
+
+    for (OWSStorage *storage in self.allStorages) {
+        [storage runSyncRegistrations];
+    }
+
+    // Run the blocking migrations.
+    //
+    // These need to run _before_ the async registered database views or
+    // they will block on them, which (in the upgrade case) can block
+    // return of appDidFinishLaunching... which in term can cause the
+    // app to crash on launch.
+    safeBlockingMigrationsBlock();
+
+    for (OWSStorage *storage in self.allStorages) {
+        [storage runAsyncRegistrationsWithCompletion:^{
+            [self postRegistrationCompleteNotificationIfPossible];
+        }];
+    }
+}
+
++ (void)postRegistrationCompleteNotificationIfPossible
+{
+    if (!self.isStorageReady) {
+        return;
+    }
+
+    static dispatch_once_t onceToken;
+    dispatch_once(&onceToken, ^{
+        [[NSNotificationCenter defaultCenter] postNotificationNameAsync:StorageIsReadyNotification
+                                                                 object:nil
+                                                               userInfo:nil];
+    });
+}
+
++ (BOOL)isStorageReady
+{
+    for (OWSStorage *storage in self.allStorages) {
+        if (!storage.areAsyncRegistrationsComplete) {
+            return NO;
+        }
+    }
+    return YES;
 }
 
 - (BOOL)tryToLoadDatabase
@@ -372,7 +445,9 @@ static NSString *keychainDBPassAccount = @"TSDatabasePass";
 
 + (void)resetAllStorage
 {
-    [[TSStorageManager sharedManager] resetStorage];
+    for (OWSStorage *storage in self.allStorages) {
+        [storage resetStorage];
+    }
 
     [self deletePasswordFromKeychain];
 
