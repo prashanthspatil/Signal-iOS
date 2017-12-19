@@ -6,8 +6,10 @@
 #import "AppContext.h"
 #import "OWSQueues.h"
 #import "TSStorageManager.h"
+#import "YapDatabaseConnection+OWS.h"
 #import <CocoaLumberjack/CocoaLumberjack.h>
 #import <Reachability/Reachability.h>
+#import <YapDatabase/YapDatabase.h>
 
 NS_ASSUME_NONNULL_BEGIN
 
